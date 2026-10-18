@@ -459,11 +459,8 @@ impl StreamContract {
     /// Issue #182: pause accrual for `stream_id`. Payer-only. Idempotent.
     pub fn pause(env: Env, stream_id: u64) -> Result<(), StreamError> {
         let key = DataKey::Stream(stream_id);
-        let mut stream: Stream = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .ok_or(StreamError::StreamNotFound)?;
+        let mut stream: Stream =
+            env.storage().persistent().get(&key).ok_or(StreamError::StreamNotFound)?;
         if stream.cancelled {
             return Err(StreamError::StreamCancelled);
         }
@@ -482,11 +479,8 @@ impl StreamContract {
     /// Issue #182: resume accrual for `stream_id`. Payer-only. Idempotent.
     pub fn resume(env: Env, stream_id: u64) -> Result<(), StreamError> {
         let key = DataKey::Stream(stream_id);
-        let mut stream: Stream = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .ok_or(StreamError::StreamNotFound)?;
+        let mut stream: Stream =
+            env.storage().persistent().get(&key).ok_or(StreamError::StreamNotFound)?;
         if stream.cancelled {
             return Err(StreamError::StreamCancelled);
         }
@@ -500,12 +494,8 @@ impl StreamContract {
         stream.paused_at = None;
         env.storage().persistent().set(&key, &stream);
         env.storage().persistent().extend_ttl(&key, LEDGER_BUMP_THRESHOLD, LEDGER_BUMP_LIMIT);
-        StreamResumed {
-            id: stream_id,
-            resumed_at: now,
-            total_paused: stream.total_paused,
-        }
-        .publish(&env);
+        StreamResumed { id: stream_id, resumed_at: now, total_paused: stream.total_paused }
+            .publish(&env);
         Ok(())
     }
     pub fn claimable(env: Env, stream_id: u64) -> Result<i128, StreamError> {
@@ -593,15 +583,18 @@ fn vested_amount(stream: &Stream, now: u64) -> i128 {
         Some(p) if now > p => (now.min(stream.end_time)).saturating_sub(p),
         _ => 0,
     };
-    let effective_elapsed = elapsed_secs
-        .saturating_sub(stream.total_paused)
-        .saturating_sub(active_pause_secs);
+    let effective_elapsed =
+        elapsed_secs.saturating_sub(stream.total_paused).saturating_sub(active_pause_secs);
     let duration = stream.end_time - stream.start_time;
     if duration == 0 {
         return stream.total_amount;
     }
     let vested = stream.total_amount * i128::from(effective_elapsed) / i128::from(duration);
-    if vested > stream.total_amount { stream.total_amount } else { vested }
+    if vested > stream.total_amount {
+        stream.total_amount
+    } else {
+        vested
+    }
 }
 
 fn next_id(env: &Env) -> u64 {
