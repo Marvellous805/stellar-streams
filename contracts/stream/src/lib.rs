@@ -38,10 +38,6 @@ pub enum StreamError {
     InvalidAmount = 1,
     InvalidTimeRange = 2,
     InvalidCliff = 3,
-    /// Issue #182: withdraw was called while the stream is paused.
-    StreamPaused = 11,
-    /// Issue #182: reserved for future strict-idempotency variant.
-    NotPaused = 12,
     StreamNotFound = 4,
     NothingToWithdraw = 5,
     Unauthorized = 6,
@@ -55,6 +51,10 @@ pub enum StreamError {
     EmptyBatch = 13,
     BatchTooLarge = 14,
     BatchOverflow = 15,
+    /// Issue #182: `withdraw` was called while the stream is paused.
+    StreamPaused = 16,
+    /// Issue #182: reserved for future strict-idempotency variant.
+    NotPaused = 17,
 }
 
 /// A single linear payment stream. Tokens are locked in the contract and vest
@@ -348,6 +348,8 @@ impl StreamContract {
                 label: label.clone(),
                 reference: label.clone(),
                 cancelled: false,
+                paused_at: None,
+                total_paused: 0,
             };
 
             let key = DataKey::Stream(id);
@@ -377,9 +379,6 @@ impl StreamContract {
         let mut stream: Stream =
             env.storage().persistent().get(&key).ok_or(StreamError::StreamNotFound)?;
 
-        if stream.cancelled {
-            return Err(StreamError::StreamCancelled);
-        }
         if stream.paused_at.is_some() {
             return Err(StreamError::StreamPaused);
         }
@@ -462,7 +461,7 @@ impl StreamContract {
         let mut stream: Stream =
             env.storage().persistent().get(&key).ok_or(StreamError::StreamNotFound)?;
         if stream.cancelled {
-            return Err(StreamError::StreamCancelled);
+            return Err(StreamError::AlreadyCancelled);
         }
         stream.sender.require_auth();
         if stream.paused_at.is_some() {
@@ -482,7 +481,7 @@ impl StreamContract {
         let mut stream: Stream =
             env.storage().persistent().get(&key).ok_or(StreamError::StreamNotFound)?;
         if stream.cancelled {
-            return Err(StreamError::StreamCancelled);
+            return Err(StreamError::AlreadyCancelled);
         }
         stream.sender.require_auth();
         let Some(paused_at) = stream.paused_at else {

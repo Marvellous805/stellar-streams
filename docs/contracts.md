@@ -208,19 +208,20 @@ read the transfers, while the event is the record of _why_ they happened.
 
 ## `escrow` — `EscrowContract`
 
-Two-party payment with a third-party arbiter, keyed by a caller-chosen id, with
-deadline-driven cancellation.
+Two-party payment with a third-party arbiter, keyed by a contract-assigned id,
+with deadline-driven cancellation.
 
 ### Entry points
 
-| Function         | Arguments                                                                                                | Returns                   | Auth                                       |
-| :--------------- | :------------------------------------------------------------------------------------------------------- | :------------------------ | :----------------------------------------- |
-| `create_escrow`  | `id: u64, payer: Address, payee: Address, arbiter: Address, token: Address, amount: i128, deadline: u64` | `Result<(), EscrowError>` | `payer`                                    |
-| `fund_escrow`    | `id: u64`                                                                                                | `Result<(), EscrowError>` | `payer`                                    |
-| `release_escrow` | `id: u64, caller: Address`                                                                               | `Result<(), EscrowError>` | `caller`, who must be `payer` or `arbiter` |
-| `refund_escrow`  | `id: u64, caller: Address`                                                                               | `Result<(), EscrowError>` | `caller`, who must be `payee` or `arbiter` |
-| `cancel_escrow`  | `id: u64, caller: Address`                                                                               | `Result<(), EscrowError>` | `caller`, who must be `payer`              |
-| `get_escrow`     | `id: u64`                                                                                                | `Option<Escrow>`          | —                                          |
+| Function         | Arguments                                                                                       | Returns                                        | Auth                                       |
+| :--------------- | :---------------------------------------------------------------------------------------------- | :--------------------------------------------- | :----------------------------------------- |
+| `create_escrow`  | `payer: Address, payee: Address, arbiter: Address, token: Address, amount: i128, deadline: u64` | `Result<u64, EscrowError>` — the new escrow id | `payer`                                    |
+| `fund_escrow`    | `id: u64`                                                                                       | `Result<(), EscrowError>`                      | `payer`                                    |
+| `release_escrow` | `id: u64, caller: Address`                                                                      | `Result<(), EscrowError>`                      | `caller`, who must be `payer` or `arbiter` |
+| `refund_escrow`  | `id: u64, caller: Address`                                                                      | `Result<(), EscrowError>`                      | `caller`, who must be `payee` or `arbiter` |
+| `cancel_escrow`  | `id: u64, caller: Address`                                                                      | `Result<(), EscrowError>`                      | `caller`, who must be `payer`              |
+| `get_escrow`     | `id: u64`                                                                                       | `Option<Escrow>`                               | —                                          |
+| `next_escrow_id` | —                                                                                               | `u64` (`1` on a fresh deploy)                  | —                                          |
 
 ```rust
 struct Escrow {
@@ -232,9 +233,18 @@ struct Escrow {
 enum EscrowStatus { Created = 0, Funded = 1, Released = 2, Refunded = 3, Cancelled = 4 }
 ```
 
-Unlike `stream` and `splits`, the escrow id is **supplied by the caller** to
-`create_escrow`; it is not issued by the contract, so ids are only unique per
-deployer discipline, and reusing a live id returns code `2`.
+Ids are assigned by the contract from a `NextId` counter in instance storage,
+exactly like `stream` and `splits`: the first escrow is `1`, and each successful
+`create_escrow` increments the counter, stores the escrow under the new id and
+returns it. `next_escrow_id` reports the id the next creation will receive
+without changing anything, and every creation extends the instance entry that
+holds the counter with the same `BUMP_THRESHOLD` / `BUMP_LIMIT` window used for
+the escrow entries.
+
+Because the contract issues the id, a creation can no longer collide with an
+existing escrow. `EscrowAlreadyExists` (code `2`) was therefore removed; the
+discriminant is retired rather than reused so every other error code keeps its
+value.
 
 `release_escrow` and `refund_escrow` take `caller` as an explicit argument and
 compare it against the stored roles after `caller.require_auth()`. That argument
@@ -254,8 +264,7 @@ signed, and a mismatch between the signer and `caller` fails at `require_auth()`
 | Code | Variant                  | Produced when                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | :--: | :----------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 |  1   | `EscrowNotFound`         | No stored escrow under `id` — `fund_escrow`, `release_escrow`, `refund_escrow`, `cancel_escrow`.                                                                                                                                                                                                                                                                                                                                              |
-|  2   | `EscrowAlreadyExists`    | `create_escrow` with an `id` already in storage.                                                                                                                                                                                                                                                                                                                                                                                              |
-|  3   | `InvalidAmount`          | `create_escrow` with `amount <= 0`. Checked after the duplicate-id test and before `payer`'s auth.                                                                                                                                                                                                                                                                                                                                            |
+|  3   | `InvalidAmount`          | `create_escrow` with `amount <= 0`. Checked before `payer`'s auth.                                                                                                                                                                                                                                                                                                                                                                            |
 |  4   | `UnauthorizedOperation`  | `release_escrow` by an address that is neither `payer` nor `arbiter`; `refund_escrow` by an address that is neither `payee` nor `arbiter`; `cancel_escrow` by anyone other than `payer`.                                                                                                                                                                                                                                                      |
 |  5   | `InvalidStateTransition` | `fund_escrow` when not `Created`; `release_escrow`/`refund_escrow` while still `Created` (funds have not been locked yet).                                                                                                                                                                                                                                                                                                                    |
 |  6   | `DeadlineNotReached`     | `cancel_escrow` on a `Funded` escrow while `ledger().timestamp() < deadline`.                                                                                                                                                                                                                                                                                                                                                                 |
