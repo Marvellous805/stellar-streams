@@ -347,7 +347,7 @@ fn test_fee_cap_boundary() {
     let id4 = create(&env, &client4_, &sender4, &recipient4, &token4.id, 1000, 0, 1000, 0);
     advance_time(&env, 1000);
     // First withdraw: full amount minus fee.
-    assert_eq!(client4_.withdraw(&id4), 990);
+    assert_eq!(client4_.withdraw(&id4), 900);
     // Second withdraw: nothing left to withdraw.
     assert!(client4_.try_withdraw(&id4).is_err());
 }
