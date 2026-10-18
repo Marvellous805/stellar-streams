@@ -675,3 +675,5 @@ function simulationFailure(method: string, error: string): StreamsError {
     contractCode,
   );
 }
+export { decodeEvent, decodeEscrowEvent, decodeSplitEvent, decodeStreamEvent } from './events';
+export type { ContractEvent, EscrowEvent, SplitEvent, StreamEvent } from './events';
