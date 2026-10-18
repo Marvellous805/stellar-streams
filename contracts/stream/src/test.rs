@@ -5,7 +5,7 @@ use soroban_sdk::{testutils::Events as _, Env, Event, String, Vec};
 
 #[path = "../../test-support/test_support.rs"]
 mod support;
-use support::{account, advance_time, empty_string, TestToken};
+use support::{account, advance_time, empty_string, reentry_rejected, HostileToken, TestToken};
 
 fn register(env: &Env) -> StreamContractClient<'_> {
     StreamContractClient::new(env, &env.register(StreamContract, ()))
